@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, MouseEvent, useRef, useEffect } from 'react';
+import { v4 as uuid } from 'uuid'
 
 // Define types for Thumbnail and Point
 interface Thumbnail {
@@ -29,6 +30,7 @@ const thumbnails: Thumbnail[] = [
 
 const ClickableImage = ({ mainImage }: ClickableImageProps) => {
   const [points, setPoints] = useState<Point[]>([]);
+  const [loading, setLoading] = useState(false);
   const selectedPointRef = useRef<number | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -101,6 +103,8 @@ const handleClick = (e: MouseEvent) => {
 
   // Generate downloadable image with points and thumbnails
   const handleDownload = async () => {
+    setLoading(true)
+
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     const img = imgRef.current;
@@ -130,15 +134,64 @@ const handleClick = (e: MouseEvent) => {
           }
         }
 
-        const link = document.createElement('a');
-        link.href = canvas.toDataURL('image/png');
-        link.download = 'image-with-thumbnails.png';
-        link.click();
+         // Convert the canvas to a Blob and upload it to ImgBB
+      canvas.toBlob(async (blob) => {
+        if (blob) {
+          const formData = new FormData();
+          formData.append('image', blob);
+
+          try {
+            const IMG_BB_API_KEY = "2dc0c3afc078aac7280338380a7591bc"
+            const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMG_BB_API_KEY}`, {
+              method: 'POST',
+              body: formData,
+            });
+
+            const result = await response.json();
+            if (result.success) {
+              console.log('Image uploaded successfully:', result.data.url);
+              await handleCreateProduct(result.data.url);
+              // You can use result.data.url to access the uploaded image
+            } else {
+              console.error('ImgBB upload error:', result.error.message);
+            }
+          } catch (error) {
+            console.error('Error uploading image to ImgBB:', error);
+          }
+        }
+      }, 'image/png');
+        // const link = document.createElement('a');
+        // link.href = canvas.toDataURL('image/png');
+        // link.download = 'image-with-thumbnails.png';
+        // link.click();
       } catch (error) {
         console.error('Error generating image:', error);
       }
     }
   };
+
+  const handleCreateProduct = async (url:any) => {
+    console.log("handleCreateProduct : ", url)
+    const newUuid = uuid()
+    const productName = `custom-product-${newUuid}`
+    const response = await fetch('/api/product', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        // Pass your session data if needed
+        url:url,
+        title: productName
+      }),
+    });
+
+    const data = await response.json();
+    console.log('Product created:', data);
+    setLoading(false)
+    alert("Product successfully created, you can checkout this product now");
+    window.location.href = `https://746fd6-78.myshopify.com/products/${productName}`
+  }
 
   return (
     <div className="flex flex-col">
@@ -213,13 +266,23 @@ const handleClick = (e: MouseEvent) => {
         {/* Hidden canvas for download */}
         <canvas ref={canvasRef} style={{ display: 'none' }}></canvas>
 
-        {/* Download button */}
+        {!loading && 
         <button
           className="text-white p-2 bg-gray-500 my-3"
           onClick={handleDownload}
+          disabled={loading}
         >
-          Download Image
+          Buy Product
         </button>
+        }
+        
+        {loading && <p>Please wait... we are creating your product</p>}
+        {/* <button
+          className="text-white p-2 bg-gray-500 my-3"
+          onClick={handleCreateProduct}
+        >
+          Create Product to Shopify
+        </button> */}
       </div>
     </div>
   );
